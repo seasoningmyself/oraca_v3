@@ -5,6 +5,9 @@
 # Discord Bot (install as editable package - includes its own dependencies)
 -e bot/
 
+# Market Data (install as editable package - includes Massive API, database, etc.)
+-e market_data/
+
 # ===== Future Dependencies =====
 # Uncomment as you add more modules to your project
 
@@ -18,6 +21,7 @@
 # psycopg2-binary>=2.9.0  # PostgreSQL sync driver
 
 # Data Fetching
+massive>=2.0.1  # Polygon/Massive API client
 # ccxt>=4.0.0  # Cryptocurrency exchange API
 # aiohttp>=3.9.0  # Async HTTP client
 

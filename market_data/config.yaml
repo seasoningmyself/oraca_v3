@@ -1,0 +1,61 @@
+# Market Data Module Configuration
+
+massive:
+  # Environment variable name for API key
+  api_key_env: MASSIVE_API_KEY_SSLABS
+
+  # API settings
+  base_url: https://api.polygon.io
+
+database:
+  # Connection settings (no auth for dev - using trust authentication)
+  host: localhost
+  port: 5432
+  database: oracore
+  user: sultansalam
+  password: ""
+
+  # Connection pool settings
+  min_pool_size: 5
+  max_pool_size: 20
+
+# Tickers to watch - Top 20 Tech Stocks
+tickers:
+  watch_list:
+    - AAPL    # Apple
+    - MSFT    # Microsoft
+    - GOOGL   # Alphabet
+    - AMZN    # Amazon
+    - META    # Meta (Facebook)
+    - TSLA    # Tesla
+    - NVDA    # NVIDIA
+    - AMD     # AMD
+    - INTC    # Intel
+    - NFLX    # Netflix
+    - CRM     # Salesforce
+    - ORCL    # Oracle
+    - ADBE    # Adobe
+    - CSCO    # Cisco
+    - AVGO    # Broadcom
+    - QCOM    # Qualcomm
+    - TXN     # Texas Instruments
+    - IBM     # IBM
+    - PYPL    # PayPal
+    - UBER    # Uber
+
+# Timeframes to collect
+timeframes:
+  - 1m
+  - 5m
+  - 15m
+  - 1h
+
+# Logging
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Application settings
+app:
+  name: "Oraca Market Data"
+  environment: "development"

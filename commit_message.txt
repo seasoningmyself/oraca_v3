@@ -1,0 +1,158 @@
+feat: Add market data module with Polygon.io integration and PostgreSQL storage
+
+Implemented complete market data pipeline that fetches real-time and historical
+stock data from Polygon.io (via Massive library), stores in PostgreSQL, and
+displays analytics in Discord.
+
+## New Market Data Module (market_data/)
+
+### Core Components
+- **MassiveClient** - Polygon.io API wrapper with async support
+- **DataService** - Business logic for fetching and storing market data
+- **DisplayService** - Discord formatting for market data and trading signals
+- **Repositories** - Clean database access layer (Symbol, Candle, BaseRepository)
+- **Models** - Pydantic models for type-safe data handling (Symbol, Candle)
+- **Config** - Flexible YAML configuration with environment variable support
+
+### Features
+- Multi-timeframe support (1m, 5m, 15m, 1h, 4h, 1d)
+- Async/await throughout for performance
+- Connection pooling for PostgreSQL
+- Repository pattern for clean separation of concerns
+- Batch data fetching and storage
+- OHLCV data with volume, VWAP, and trade counts
+
+### Configuration
+- market_data/config.yaml - Data sources, tickers, database settings
+- Supports top 20 tech stocks by default
+- Flexible database authentication (direct or env vars)
+
+## Database Setup
+
+### Simplified Schema (database/init.sql)
+- Replaced TimescaleDB-dependent schema with simplified version for easier dev setup
+- 8 tables: symbols, candles, signals, alerts, orders, executions, decisions, outcomes
+- Proper indexes and constraints for performance
+- Note: Old TimescaleDB schema backed up as init_timescaledb.sql.backup
+
+### Automated Setup (setup_database.sh)
+- One-command database initialization
+- Installs PostgreSQL@17 if needed
+- Creates database, runs schema, verifies setup
+- Idempotent - safe to run multiple times
+
+## Demo & Utility Scripts
+
+### demo_market_data.py
+- Complete end-to-end demo showing:
+  - Fetching AAPL data from Polygon.io
+  - Storing in PostgreSQL
+  - Displaying candle summary in Discord
+  - Sending trading signal alert
+
+### explore_data.py
+- Interactive data explorer
+- Shows what data is available in database
+- Displays sample queries and usage examples
+- Helpful for understanding data structure
+
+### fetch_all_tickers.py
+- Bulk fetch script for all tickers in watch list
+- Progress tracking with success/failure reporting
+- Handles API errors gracefully
+
+### test_top_performers.py
+- Calculates 24-hour performance for all stocks
+- Ranks and displays top 3 performers
+- Sends beautifully formatted report to Discord
+- Demonstrates data analysis capabilities
+
+## Project-Level Updates
+
+### README.md (new)
+- Quick start guide (4 commands to get running)
+- Architecture overview
+- Module descriptions
+- Clear requirements list
+
+### requirements.txt
+- Added market_data dependencies:
+  - massive (Polygon.io client)
+  - asyncpg (async PostgreSQL driver)
+  - psycopg2-binary (sync PostgreSQL driver)
+- Both modules (bot/ and market_data/) installed as editable packages
+
+### Bot Module Cleanup
+- Removed trading signal template from bot/services/message_service.py
+- Moved to market_data/services/display_service.py for better separation
+- Bot module remains generic and reusable
+
+## Data Collected
+
+Successfully fetched and stored:
+- 1,864 five-minute candles across 5 stocks (AAPL, MSFT, GOOGL, AMZN, META)
+- 2 days of historical data (Nov 5-7, 2025)
+- Full OHLCV data with volume, VWAP, trade counts
+
+## Technical Details
+
+### Database
+- PostgreSQL@17 with async connection pooling
+- User: sultansalam (trust authentication for dev)
+- Database: oracore
+- 20 symbols registered, 5 with data
+
+### Architecture
+Polygon.io → MassiveClient → DataService → Repositories → PostgreSQL
+                                                    ↓
+                                          DisplayService → Bot → Discord
+
+### Known Limitations
+- API rate limiting not implemented (hits Polygon.io limits after ~5 stocks)
+- Batch insert could be optimized (inserts one-by-one vs executemany)
+- N+1 query in symbol_repository.get_or_create()
+- No retry logic for connection failures
+
+
+## Setup Instructions
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Add API key to .env.local
+echo "MASSIVE_API_KEY_SSLABS=your_key_here" >> .env.local
+
+# 3. Set up database
+./setup_database.sh
+
+# 4. Run demo
+python3 demo_market_data.py
+```
+
+## Files Changed
+
+New directories:
+- market_data/ (complete module)
+
+New files:
+- setup_database.sh
+- demo_market_data.py
+- explore_data.py
+- fetch_all_tickers.py
+- test_top_performers.py
+- README.md
+- database/init_timescaledb.sql.backup
+
+Modified files:
+- database/init.sql (simplified schema)
+- requirements.txt (added dependencies)
+- bot/services/message_service.py (removed trading signal)
+
+Deleted files:
+- test_trading_signal.py (functionality moved to market_data)
+
+---
+
+System now largely operational for market data collection, storage, and Discord notifications.
+Ready to build trading strategies and signal generation on top of this foundation.
