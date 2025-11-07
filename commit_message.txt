@@ -1,3 +1,4 @@
+git commit -m "$(cat << 'EOF'
 feat: Add market data module with Polygon.io integration and PostgreSQL storage
 
 Implemented complete market data pipeline that fetches real-time and historical
@@ -156,3 +157,5 @@ Deleted files:
 
 System now largely operational for market data collection, storage, and Discord notifications.
 Ready to build trading strategies and signal generation on top of this foundation.
+EOF
+)"
