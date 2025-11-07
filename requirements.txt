@@ -1,0 +1,32 @@
+# Oraca v3 Project Dependencies
+
+# ===== Core Modules =====
+
+# Discord Bot (install as editable package - includes its own dependencies)
+-e bot/
+
+# ===== Future Dependencies =====
+# Uncomment as you add more modules to your project
+
+# Trading Engine
+# pandas>=2.0.0
+# numpy>=1.24.0
+# ta>=0.11.0  # Technical analysis library
+
+# Database
+# asyncpg>=0.29.0  # PostgreSQL async driver
+# psycopg2-binary>=2.9.0  # PostgreSQL sync driver
+
+# Data Fetching
+# ccxt>=4.0.0  # Cryptocurrency exchange API
+# aiohttp>=3.9.0  # Async HTTP client
+
+# Utilities
+# python-dateutil>=2.8.0
+# pytz>=2023.3
+
+# Development
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0  # Code formatter
+# mypy>=1.5.0  # Type checker
