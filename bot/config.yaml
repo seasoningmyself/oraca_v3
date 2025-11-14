@@ -7,7 +7,9 @@ discord:
   # To get a channel ID: Right-click channel → Copy Channel ID (Developer Mode must be enabled)
   channels:
     general: 1435382314963177474  # General messages and announcements
-    alerts: 1435382314963177474   # Trading alerts and signals (update with actual ID)
+    alerts:
+      - 1435382314963177474   # Server 1: Trading alerts and signals
+      - 1385466373349838918   # Server 2: Trading alerts and signals
     logs: 1435382314963177474     # Bot logs and status updates (update with actual ID)
     errors: 1435382314963177474   # Error notifications (update with actual ID)
 

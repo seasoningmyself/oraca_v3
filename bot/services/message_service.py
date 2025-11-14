@@ -57,17 +57,32 @@ class MessageService:
 
     async def send_alert(self, message: str, embed: Optional[discord.Embed] = None) -> bool:
         """
-        Send a trading alert message.
+        Send a trading alert message to all configured alert channels.
 
         Args:
             message: Alert message content
             embed: Optional embed with alert details
 
         Returns:
-            bool: True if sent successfully
+            bool: True if sent successfully to at least one channel
         """
         self.logger.info(f"Sending alert: {message[:100]}...")
-        return await self.send_to_channel("alerts", message, embed)
+
+        # Get alert channel(s)
+        alerts_config = self.config.discord.channels.alerts
+
+        # Handle both single channel and multiple channels
+        if isinstance(alerts_config, list):
+            # Send to all alert channels
+            success = False
+            for channel_id in alerts_config:
+                result = await self.bot_client.send_message(channel_id, message, embed)
+                if result is not None:
+                    success = True
+            return success
+        else:
+            # Single channel (backward compatibility)
+            return await self.send_to_channel("alerts", message, embed)
 
     async def send_log(self, message: str) -> bool:
         """

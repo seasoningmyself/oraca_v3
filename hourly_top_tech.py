@@ -22,8 +22,8 @@ from market_data.repositories.symbol_repository import SymbolRepository
 from market_data.repositories.candle_repository import CandleRepository
 from market_data.services.data_service import DataService
 
-# Top 4 tech stocks
-TOP_TECH_STOCKS = ["AAPL", "MSFT", "GOOGL", "NVDA"]
+# Top 5 tech stocks
+TOP_TECH_STOCKS = ["AAPL", "MSFT", "GOOGL", "NVDA", "META"]
 
 
 async def calculate_24h_performance(candle_repo: CandleRepository, symbol_id: int, ticker: str) -> Optional[Dict]:
@@ -60,7 +60,7 @@ async def calculate_24h_performance(candle_repo: CandleRepository, symbol_id: in
 
 
 async def main():
-    """Fetch latest data for top 4 tech stocks and send performance to Discord"""
+    """Fetch latest data for top 5 tech stocks and send performance to Discord"""
     print(f"[{datetime.now()}] Starting hourly top tech monitor...")
 
     # Initialize configs
@@ -84,7 +84,7 @@ async def main():
     await asyncio.sleep(3)
 
     try:
-        # 1. Fetch latest data for top 4 tech stocks
+        # 1. Fetch latest data for top 5 tech stocks
         print(f"Fetching data for {', '.join(TOP_TECH_STOCKS)}...")
         to_date = datetime.now().strftime('%Y-%m-%d')
         from_date = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
@@ -101,7 +101,7 @@ async def main():
             except Exception as e:
                 print(f"  ✗ {ticker}: {e}")
 
-        # 2. Calculate performance for all 4 stocks
+        # 2. Calculate performance for all 5 stocks
         print("Calculating performance...")
         performances = []
 
@@ -122,7 +122,7 @@ async def main():
 
         # 4. Create Discord embed
         fields = []
-        medals = ["🥇", "🥈", "🥉", "4️⃣"]
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
 
         for i, perf in enumerate(performances):
             indicator = "🟢" if perf['price_change_pct'] > 0 else "🔴"

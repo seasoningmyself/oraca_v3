@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 class ChannelConfig(BaseModel):
     """Discord channel configuration"""
     general: int
-    alerts: int
+    alerts: int | list[int]  # Support single channel or multiple channels
     logs: int
     errors: int
 

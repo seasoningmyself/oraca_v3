@@ -2,7 +2,7 @@
 
 massive:
   # Environment variable name for API key
-  api_key_env: MASSIVE_API_KEY_SSLABS
+  api_key_env: MASSIVE_II_API_KEY
 
   # API settings
   base_url: https://api.polygon.io
