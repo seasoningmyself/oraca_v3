@@ -20,6 +20,31 @@ CREATE TABLE IF NOT EXISTS symbols (
 CREATE INDEX IF NOT EXISTS idx_symbols_ticker ON symbols(ticker);
 
 -- ============================================================================
+-- Universe Symbols: Filtered instruments for scanning
+CREATE TABLE IF NOT EXISTS universe_symbols (
+    symbol_id BIGINT PRIMARY KEY REFERENCES symbols(id) ON DELETE CASCADE,
+    ticker TEXT NOT NULL,
+    float_shares BIGINT,
+    preferred_float BOOLEAN DEFAULT FALSE,
+    last_price NUMERIC(18,6),
+    price_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+    float_status TEXT NOT NULL DEFAULT 'UNKNOWN',
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','TEMP_DROPPED','RETIRED')),
+    status_reason TEXT DEFAULT '',
+    last_price_at TIMESTAMPTZ,
+    float_updated_at TIMESTAMPTZ,
+    refreshed_at TIMESTAMPTZ DEFAULT NOW(),
+    temp_exclusion_until TIMESTAMPTZ,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (ticker)
+);
+
+CREATE INDEX IF NOT EXISTS idx_universe_status ON universe_symbols(status, refreshed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_universe_price_status ON universe_symbols(price_status);
+
+-- ============================================================================
 -- Candles: Multi-timeframe OHLCV
 CREATE TABLE IF NOT EXISTS candles (
     symbol_id BIGINT NOT NULL REFERENCES symbols(id),
@@ -138,6 +163,6 @@ CREATE INDEX IF NOT EXISTS idx_outcomes_signal ON outcomes(signal_id);
 DO $$
 BEGIN
     RAISE NOTICE '✅ OraCore database initialized successfully (simplified mode)!';
-    RAISE NOTICE 'Tables created: symbols, candles, signals, outcomes, alerts, orders, executions, decisions';
+    RAISE NOTICE 'Tables created: symbols, universe_symbols, candles, signals, outcomes, alerts, orders, executions, decisions';
     RAISE NOTICE 'Note: Running without TimescaleDB for development';
 END $$;

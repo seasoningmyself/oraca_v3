@@ -51,3 +51,6 @@ htmlcov/
 
 # Backups
 *.backup
+
+# Third-party client dumps
+client-python-master/

@@ -10,6 +10,7 @@ Modular market data integration for the Oraca trading system. Fetches data from 
 - ✅ Discord display formatting (price updates, candles, trading signals)
 - ✅ Async/await throughout
 - ✅ Type-safe with Pydantic models
+- ✅ Daily universe curator (price-band screen, float-ready when data available)
 
 ## Quick Start
 
@@ -62,6 +63,16 @@ count = await data_service.fetch_and_store_candles(
 # Get latest candle
 candle = await data_service.get_latest_candle("AAPL", "5m")
 ```
+
+### Universe Curator
+
+Build the curated list of eligible tickers (currently price-band filtered, with float support ready when data becomes available) before running the high-frequency ingestion loop:
+
+```bash
+python -m market_data.universe_curator
+```
+
+The job calls Massive reference endpoints, applies the configured filters (`market_data/config.yaml → universe`), and upserts rows into the `universe_symbols` table. Downstream workers should read that table to know which tickers to poll each minute.
 
 ## Architecture
 
