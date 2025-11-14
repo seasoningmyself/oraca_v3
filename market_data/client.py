@@ -6,9 +6,26 @@ from massive import RESTClient
 from typing import List, Optional
 from datetime import datetime, timedelta
 from decimal import Decimal
+import asyncio
+import time
 from market_data.config import Config
 from market_data.models.candle import Candle
 from market_data.utils.logger import get_logger
+
+
+class RateLimiter:
+    """Simple rate limiter to stay under API limits (100 req/sec)"""
+
+    def __init__(self, max_per_second: int = 100):
+        self.min_interval = 1.0 / max_per_second
+        self.last_request = 0
+
+    async def acquire(self):
+        """Wait if necessary to respect rate limit"""
+        elapsed = time.time() - self.last_request
+        if elapsed < self.min_interval:
+            await asyncio.sleep(self.min_interval - elapsed)
+        self.last_request = time.time()
 
 
 class MassiveClient:
@@ -26,6 +43,7 @@ class MassiveClient:
         """
         self.config = config
         self.logger = get_logger(__name__)
+        self.rate_limiter = RateLimiter(max_per_second=100)
 
         # Initialize Massive REST client
         self.client = RESTClient(api_key=config.massive_api_key)
@@ -88,6 +106,7 @@ class MassiveClient:
 
         try:
             # Fetch aggregates from Massive
+            await self.rate_limiter.acquire()
             for agg in self.client.list_aggs(
                 ticker=ticker,
                 multiplier=multiplier,
@@ -132,6 +151,7 @@ class MassiveClient:
             dict with price info or None
         """
         try:
+            await self.rate_limiter.acquire()
             trade = self.client.get_last_trade(ticker=ticker)
 
             return {
@@ -161,6 +181,7 @@ class MassiveClient:
             yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
 
             # Get daily candle
+            await self.rate_limiter.acquire()
             aggs = list(self.client.list_aggs(
                 ticker=ticker,
                 multiplier=1,
