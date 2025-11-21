@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import asyncio
 import time
+import requests
 from market_data.config import Config
 from market_data.models.candle import Candle
 from market_data.utils.logger import get_logger
@@ -198,4 +199,32 @@ class MassiveClient:
 
         except Exception as e:
             self.logger.error(f"Error fetching previous close for {ticker}: {e}")
+            return None
+
+    async def get_nbbo(self, ticker: str) -> Optional[dict]:
+        """
+        Get latest NBBO for a ticker to compute spreads.
+
+        Returns:
+            dict with bid, ask, timestamp or None on failure.
+        """
+        url = f"{self.config.massive.base_url.rstrip('/')}/v2/last/nbbo/{ticker}"
+        headers = {
+            "Authorization": f"Bearer {self.config.massive_api_key}",
+            "User-Agent": "oraca-scanner",
+        }
+        try:
+            await self.rate_limiter.acquire()
+            resp = requests.get(url, headers=headers, timeout=5)
+            if resp.status_code != 200:
+                self.logger.warning("NBBO non-200 for %s: %s %s", ticker, resp.status_code, resp.text[:200])
+                return None
+            data = resp.json()
+            return {
+                "bid": data.get("bidPrice") or data.get("bid"),
+                "ask": data.get("askPrice") or data.get("ask"),
+                "timestamp": data.get("timestamp"),
+            }
+        except Exception as exc:
+            self.logger.warning("NBBO request failed for %s: %s", ticker, exc)
             return None

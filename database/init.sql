@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS signals (
     entry_price NUMERIC(18,6),
     stop_loss NUMERIC(18,6),
     take_profit NUMERIC(18,6),
+    features JSONB DEFAULT '{}'::jsonb,
     metadata JSONB
 );
 
