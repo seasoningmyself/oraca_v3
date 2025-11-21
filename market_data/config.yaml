@@ -7,6 +7,14 @@ massive:
   # API settings
   base_url: https://api.massive.com
 
+fmp:
+  # Environment variable name for FMP API key
+  api_key_env: FMP_API_KEY
+  base_url: https://financialmodelingprep.com
+  # Daily call budget (FMP free tier is 250/day)
+  max_calls_per_day: 250
+  timeout_seconds: 10.0
+
 database:
   # Connection settings (no auth for dev - using trust authentication)
   host: localhost

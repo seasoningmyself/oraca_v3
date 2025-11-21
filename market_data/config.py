@@ -16,6 +16,14 @@ class MassiveConfig(BaseModel):
     base_url: str = "https://api.massive.com"
 
 
+class FmpConfig(BaseModel):
+    """Financial Modeling Prep API configuration"""
+    api_key_env: str
+    base_url: str = "https://financialmodelingprep.com"
+    max_calls_per_day: int = 250
+    timeout_seconds: float = 10.0
+
+
 class DatabaseConfig(BaseModel):
     """Database configuration"""
     host: str
@@ -58,6 +66,7 @@ class UniverseConfig(BaseModel):
 class Config(BaseModel):
     """Main configuration container"""
     massive: MassiveConfig
+    fmp: Optional[FmpConfig] = None
     database: DatabaseConfig
     tickers: TickersConfig
     timeframes: List[str]
@@ -106,6 +115,18 @@ class Config(BaseModel):
 
         # Default to empty for dev (trust authentication)
         return ""
+
+    @property
+    def fmp_api_key(self) -> Optional[str]:
+        """Get FMP API key from environment variable (optional feature)"""
+        if not self.fmp:
+            return None
+        api_key = os.getenv(self.fmp.api_key_env)
+        if not api_key:
+            raise ValueError(
+                f"FMP API key not found in environment variable: {self.fmp.api_key_env}"
+            )
+        return api_key
 
     @property
     def db_dsn(self) -> str:

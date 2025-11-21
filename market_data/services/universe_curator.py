@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 from massive import RESTClient
 
 from market_data.config import Config
+from market_data.clients.fmp_client import FmpClient
 from market_data.models.universe_symbol import UniverseSymbol
 from market_data.repositories.symbol_repository import SymbolRepository
 from market_data.repositories.universe_repository import UniverseRepository
@@ -38,6 +39,13 @@ class UniverseCurator:
             api_key=self.api_key,
             base=config.massive.base_url.rstrip("/"),
         )
+        self.fmp_client: Optional[FmpClient] = None
+        self._float_cache: Dict[str, Tuple[Optional[int], Optional[datetime], str]] = {}
+        if config.fmp:
+            try:
+                self.fmp_client = FmpClient(config)
+            except Exception as exc:
+                self.logger.warning("FMP client disabled: %s", exc)
 
     async def refresh(self) -> Dict[str, int]:
         """
@@ -172,6 +180,9 @@ class UniverseCurator:
             "temp_dropped": 0,
             "retired": 0,
             "skipped_price": 0,
+            "float_calls": 0,
+            "float_hits": 0,
+            "float_bulk": 0,
         }
 
         price_min = Decimal(str(self.config.universe.price_min))
@@ -179,6 +190,8 @@ class UniverseCurator:
         buffer_pct = Decimal(str(self.config.universe.price_buffer_pct))
         buffer_min = price_min * (Decimal("1") - buffer_pct)
         buffer_max = price_max * (Decimal("1") + buffer_pct)
+
+        await self._prime_float_cache(list(tickers.keys()))
 
         for ticker, meta in tickers.items():
             price_info = price_map.get(ticker)
@@ -193,7 +206,7 @@ class UniverseCurator:
                 buffer_min,
                 buffer_max,
             )
-            float_status, within_float = "UNKNOWN", True
+            float_shares, float_updated_at, float_status, within_float = await self._get_float_data(ticker)
 
             status, status_reason = self._determine_status(
                 within_price,
@@ -220,7 +233,7 @@ class UniverseCurator:
             entry = UniverseSymbol(
                 symbol_id=symbol.id,
                 ticker=ticker,
-                float_shares=None,
+                float_shares=float_shares,
                 preferred_float=False,
                 last_price=price_info.price,
                 price_status=price_status,
@@ -228,19 +241,63 @@ class UniverseCurator:
                 status=status,
                 status_reason=status_reason,
                 last_price_at=price_info.timestamp,
-                float_updated_at=None,
+                float_updated_at=float_updated_at,
                 refreshed_at=run_started,
                 metadata=metadata,
             )
 
             await self.universe_repo.upsert(entry)
             summary["processed"] += 1
+            if self.fmp_client:
+                summary["float_calls"] = self.fmp_client.calls_made
+                if float_shares is not None:
+                    summary["float_hits"] += 1
+            if ticker in self._float_cache:
+                summary["float_bulk"] += 1
             if status == "ACTIVE":
                 summary["active"] += 1
             else:
                 summary["temp_dropped"] += 1
 
         return summary
+
+    async def _get_float_data(
+        self, ticker: str
+    ) -> Tuple[Optional[int], Optional[datetime], str, bool]:
+        """
+        Fetch float data with caching and budget guard.
+
+        Returns:
+            float_shares, updated_at, float_status, within_float_flag
+        """
+        if not self.fmp_client:
+            return None, None, "FMP_DISABLED", True
+
+        if ticker in self._float_cache:
+            shares, updated_at, status = self._float_cache[ticker]
+            return shares, updated_at, status, True
+
+        shares, updated_at, status = await asyncio.to_thread(
+            self.fmp_client.get_float, ticker
+        )
+        self._float_cache[ticker] = (shares, updated_at, status)
+
+        if shares is None:
+            within_float = True  # don't drop ticker just because float is missing
+            return None, updated_at, status, within_float
+
+        return shares, updated_at, "HAS_FLOAT", True
+
+    async def _prime_float_cache(self, tickers: list) -> None:
+        """Fetch float data for provided tickers in a single batch call."""
+        if not self.fmp_client:
+            return
+        if self._float_cache:
+            return
+        batch_map = await asyncio.to_thread(self.fmp_client.get_float_batch, tickers)
+        if not batch_map:
+            return
+        self._float_cache.update(batch_map)
 
     @staticmethod
     def _safe_epoch(raw: Optional[int]) -> Optional[datetime]:
