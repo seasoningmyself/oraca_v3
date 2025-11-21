@@ -25,6 +25,8 @@ class UniverseRepository(BaseRepository):
                 symbol_id,
                 ticker,
                 float_shares,
+                free_float_pct,
+                outstanding_shares,
                 preferred_float,
                 last_price,
                 price_status,
@@ -39,13 +41,16 @@ class UniverseRepository(BaseRepository):
                 updated_at
             )
             VALUES (
-                $1, $2, $3, $4, $5,
-                $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, NOW()
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, $10, $11,
+                $12, $13, $14, $15, $16,
+                NOW()
             )
             ON CONFLICT (symbol_id) DO UPDATE
             SET
                 float_shares = EXCLUDED.float_shares,
+                free_float_pct = EXCLUDED.free_float_pct,
+                outstanding_shares = EXCLUDED.outstanding_shares,
                 preferred_float = EXCLUDED.preferred_float,
                 last_price = EXCLUDED.last_price,
                 price_status = EXCLUDED.price_status,
@@ -59,8 +64,8 @@ class UniverseRepository(BaseRepository):
                 metadata = EXCLUDED.metadata,
                 updated_at = NOW()
             RETURNING
-                symbol_id, ticker, float_shares, preferred_float,
-                last_price, price_status, float_status, status,
+                symbol_id, ticker, float_shares, free_float_pct, outstanding_shares,
+                preferred_float, last_price, price_status, float_status, status,
                 status_reason, last_price_at, float_updated_at,
                 refreshed_at, temp_exclusion_until, metadata,
                 created_at, updated_at
@@ -71,6 +76,8 @@ class UniverseRepository(BaseRepository):
             entry.symbol_id,
             entry.ticker.upper(),
             entry.float_shares,
+            entry.free_float_pct,
+            entry.outstanding_shares,
             entry.preferred_float,
             entry.last_price,
             entry.price_status,
@@ -92,8 +99,8 @@ class UniverseRepository(BaseRepository):
         """Fetch universe entries that match the provided statuses."""
         query = """
             SELECT
-                symbol_id, ticker, float_shares, preferred_float,
-                last_price, price_status, float_status, status,
+                symbol_id, ticker, float_shares, free_float_pct, outstanding_shares,
+                preferred_float, last_price, price_status, float_status, status,
                 status_reason, last_price_at, float_updated_at,
                 refreshed_at, temp_exclusion_until, metadata
             FROM universe_symbols

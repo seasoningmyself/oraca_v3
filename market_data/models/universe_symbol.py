@@ -16,6 +16,8 @@ class UniverseSymbol(BaseModel):
     symbol_id: int
     ticker: str
     float_shares: Optional[int] = None
+    free_float_pct: Optional[Decimal] = None
+    outstanding_shares: Optional[int] = None
     preferred_float: bool = False
     last_price: Optional[Decimal] = None
     price_status: str = "UNKNOWN"

@@ -33,15 +33,17 @@ class FmpClient:
     def _count_call(self):
         self._calls += 1
 
-    def get_float(self, ticker: str) -> Tuple[Optional[int], Optional[datetime], str]:
+    def get_float(
+        self, ticker: str
+    ) -> Tuple[Optional[int], Optional[float], Optional[int], Optional[datetime], str]:
         """
         Fetch float shares for a single ticker via /stable/shares-float.
 
         Returns:
-            (float_shares, as_of_date, status_reason)
+            (float_shares, free_float_pct, outstanding_shares, as_of_date, status_reason)
         """
         if not self._can_call():
-            return None, None, "limit_reached"
+            return None, None, None, None, "limit_reached"
 
         url = f"{self.base_url}/stable/shares-float"
         params = {"symbol": ticker.upper(), "apikey": self.api_key}
@@ -50,7 +52,7 @@ class FmpClient:
             self._count_call()
         except Exception as exc:
             self.logger.warning("FMP float request failed for %s: %s", ticker, exc)
-            return None, None, "request_error"
+            return None, None, None, None, "request_error"
 
         if resp.status_code != 200:
             self.logger.warning(
@@ -59,29 +61,31 @@ class FmpClient:
                 resp.status_code,
                 resp.text[:200],
             )
-            return None, None, f"http_{resp.status_code}"
+            return None, None, None, None, f"http_{resp.status_code}"
 
         try:
             payload = resp.json()
         except ValueError:
-            return None, None, "invalid_json"
+            return None, None, None, None, "invalid_json"
 
         # Expected FMP shape: [{"symbol": "...", "floatShares": 1234, "date": "2025-02-04 17:01:35"}]
         record = payload[0] if isinstance(payload, list) and payload else None
         if not record:
-            return None, None, "empty"
+            return None, None, None, None, "empty"
 
-        float_value = record.get("floatShares") or record.get("float_shares") or record.get("float")
+        float_value = record.get("floatShares")
+        free_float_pct = record.get("freeFloat")
+        outstanding_shares = record.get("outstandingShares")
         as_of = record.get("date") or record.get("updated") or record.get("period")
 
         if float_value is None:
-            return None, None, "missing_float"
+            return None, free_float_pct, outstanding_shares, None, "missing_float"
 
         try:
             float_int = int(float_value)
         except (TypeError, ValueError):
             self.logger.debug("FMP float parse failed for %s: value=%s", ticker, float_value)
-            return None, None, "invalid_float"
+            return None, free_float_pct, outstanding_shares, None, "invalid_float"
 
         as_of_dt: Optional[datetime] = None
         if as_of:
@@ -90,7 +94,7 @@ class FmpClient:
             except ValueError:
                 as_of_dt = None
 
-        return float_int, as_of_dt, "ok"
+        return float_int, free_float_pct, outstanding_shares if outstanding_shares is not None else None, as_of_dt, "ok"
 
     @property
     def calls_made(self) -> int:
@@ -104,7 +108,7 @@ class FmpClient:
         - If multiple: uses /stable/shares-float-all once and filters to requested tickers.
 
         Returns:
-            Dict[ticker] -> (float_shares, as_of_date, status_reason)
+            Dict[ticker] -> (float_shares, free_float_pct, outstanding_shares, as_of_date, status_reason)
         """
         tickers = [t.upper() for t in tickers if t]
         if not tickers:
@@ -115,7 +119,7 @@ class FmpClient:
             return self._get_from_all_endpoint(tickers)
 
         if not self._can_call():
-            return {t: (None, None, "limit_reached") for t in tickers}
+            return {t: (None, None, None, None, "limit_reached") for t in tickers}
 
         symbols = ",".join(tickers)
         url = f"{self.base_url}/stable/shares-float"
@@ -125,7 +129,7 @@ class FmpClient:
             self._count_call()
         except Exception as exc:
             self.logger.warning("FMP batch float request failed: %s", exc)
-            return {t: (None, None, "request_error") for t in tickers}
+            return {t: (None, None, None, None, "request_error") for t in tickers}
 
         if resp.status_code != 200:
             self.logger.warning(
@@ -133,30 +137,32 @@ class FmpClient:
                 resp.status_code,
                 resp.text[:200],
             )
-            return {t: (None, None, f"http_{resp.status_code}") for t in tickers}
+            return {t: (None, None, None, None, f"http_{resp.status_code}") for t in tickers}
 
         try:
             payload = resp.json()
         except ValueError:
-            return {t: (None, None, "invalid_json") for t in tickers}
+            return {t: (None, None, None, None, "invalid_json") for t in tickers}
 
-        results: dict = {t: (None, None, "missing_float") for t in tickers}
+        results: dict = {t: (None, None, None, None, "missing_float") for t in tickers}
         if isinstance(payload, list):
             for record in payload:
                 ticker = (record.get("symbol") or "").upper()
                 if not ticker:
                     continue
-                float_val = record.get("floatShares") or record.get("float_shares") or record.get("float")
+                float_val = record.get("floatShares")
+                free_float_pct = record.get("freeFloat")
+                outstanding_shares = record.get("outstandingShares")
                 as_of = record.get("date") or record.get("updated") or record.get("period")
 
                 if float_val is None:
-                    results[ticker] = (None, None, "missing_float")
+                    results[ticker] = (None, free_float_pct, outstanding_shares, None, "missing_float")
                     continue
 
                 try:
                     float_int = int(float_val)
                 except (TypeError, ValueError):
-                    results[ticker] = (None, None, "invalid_float")
+                    results[ticker] = (None, free_float_pct, outstanding_shares, None, "invalid_float")
                     continue
 
                 as_of_dt: Optional[datetime] = None
@@ -166,16 +172,22 @@ class FmpClient:
                     except ValueError:
                         as_of_dt = None
 
-                results[ticker] = (float_int, as_of_dt, "ok")
+                results[ticker] = (
+                    float_int,
+                    free_float_pct,
+                    outstanding_shares if outstanding_shares is not None else None,
+                    as_of_dt,
+                    "ok",
+                )
         return results
 
     def _get_from_all_endpoint(self, tickers: list) -> dict:
         """Single call to /stable/shares-float-all, filtered to requested tickers."""
         remaining = set(tickers)
-        results: dict = {t: (None, None, "missing_float") for t in tickers}
+        results: dict = {t: (None, None, None, None, "missing_float") for t in tickers}
 
         if not self._can_call():
-            return {t: (None, None, "limit_reached") for t in tickers}
+            return {t: (None, None, None, None, "limit_reached") for t in tickers}
 
         url = f"{self.base_url}/stable/shares-float-all"
         params = {"page": 0, "limit": max(len(tickers), 1000), "apikey": self.api_key}
@@ -184,7 +196,7 @@ class FmpClient:
             self._count_call()
         except Exception as exc:
             self.logger.warning("FMP all endpoint request failed: %s", exc)
-            return {t: (None, None, "request_error") for t in tickers}
+            return {t: (None, None, None, None, "request_error") for t in tickers}
 
         if resp.status_code != 200:
             self.logger.warning(
@@ -192,12 +204,12 @@ class FmpClient:
                 resp.status_code,
                 resp.text[:200],
             )
-            return {t: (None, None, f"http_{resp.status_code}") for t in tickers}
+            return {t: (None, None, None, None, f"http_{resp.status_code}") for t in tickers}
 
         try:
             payload = resp.json()
         except ValueError:
-            return {t: (None, None, "invalid_json") for t in tickers}
+            return {t: (None, None, None, None, "invalid_json") for t in tickers}
 
         if not isinstance(payload, list):
             return results
@@ -207,17 +219,19 @@ class FmpClient:
             if ticker not in remaining:
                 continue
 
-            float_val = record.get("floatShares") or record.get("float_shares") or record.get("float")
+            float_val = record.get("floatShares")
+            free_float_pct = record.get("freeFloat")
+            outstanding_shares = record.get("outstandingShares")
             as_of = record.get("date") or record.get("updated") or record.get("period")
 
             if float_val is None:
-                results[ticker] = (None, None, "missing_float")
+                results[ticker] = (None, free_float_pct, outstanding_shares, None, "missing_float")
                 continue
 
             try:
                 float_int = int(float_val)
             except (TypeError, ValueError):
-                results[ticker] = (None, None, "invalid_float")
+                results[ticker] = (None, free_float_pct, outstanding_shares, None, "invalid_float")
                 continue
 
             as_of_dt: Optional[datetime] = None
@@ -227,7 +241,13 @@ class FmpClient:
                 except ValueError:
                     as_of_dt = None
 
-            results[ticker] = (float_int, as_of_dt, "ok")
+            results[ticker] = (
+                float_int,
+                free_float_pct,
+                outstanding_shares if outstanding_shares is not None else None,
+                as_of_dt,
+                "ok",
+            )
             remaining.discard(ticker)
             if not remaining:
                 break
@@ -239,7 +259,7 @@ class FmpClient:
         Fetch float data for the full universe via paged /stable/shares-float-all.
 
         Returns:
-            Dict[ticker] -> (float_shares, as_of_date, status_reason)
+            Dict[ticker] -> (float_shares, free_float_pct, outstanding_shares, as_of_date, status_reason)
         """
         results: dict = {}
         page = 0
@@ -276,17 +296,19 @@ class FmpClient:
                 if not ticker:
                     continue
 
-                float_val = record.get("floatShares") or record.get("float_shares") or record.get("float")
+                float_val = record.get("floatShares")
+                free_float_pct = record.get("freeFloat")
+                outstanding_shares = record.get("outstandingShares")
                 as_of = record.get("date") or record.get("updated") or record.get("period")
 
                 if float_val is None:
-                    results[ticker] = (None, None, "missing_float")
+                    results[ticker] = (None, free_float_pct, outstanding_shares, None, "missing_float")
                     continue
 
                 try:
                     float_int = int(float_val)
                 except (TypeError, ValueError):
-                    results[ticker] = (None, None, "invalid_float")
+                    results[ticker] = (None, free_float_pct, outstanding_shares, None, "invalid_float")
                     continue
 
                 as_of_dt: Optional[datetime] = None
@@ -296,7 +318,13 @@ class FmpClient:
                     except ValueError:
                         as_of_dt = None
 
-                results[ticker] = (float_int, as_of_dt, "ok")
+                results[ticker] = (
+                    float_int,
+                    free_float_pct,
+                    outstanding_shares if outstanding_shares is not None else None,
+                    as_of_dt,
+                    "ok",
+                )
 
             page += 1
 

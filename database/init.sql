@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS universe_symbols (
     symbol_id BIGINT PRIMARY KEY REFERENCES symbols(id) ON DELETE CASCADE,
     ticker TEXT NOT NULL,
     float_shares BIGINT,
+    free_float_pct NUMERIC(10,6),
+    outstanding_shares BIGINT,
     preferred_float BOOLEAN DEFAULT FALSE,
     last_price NUMERIC(18,6),
     price_status TEXT NOT NULL DEFAULT 'UNKNOWN',

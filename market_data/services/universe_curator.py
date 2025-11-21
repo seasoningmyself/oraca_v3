@@ -206,7 +206,7 @@ class UniverseCurator:
                 buffer_min,
                 buffer_max,
             )
-            float_shares, float_updated_at, float_status, within_float = await self._get_float_data(ticker)
+            float_shares, free_float_pct, outstanding_shares, float_updated_at, float_status, within_float = await self._get_float_data(ticker)
 
             status, status_reason = self._determine_status(
                 within_price,
@@ -234,6 +234,8 @@ class UniverseCurator:
                 symbol_id=symbol.id,
                 ticker=ticker,
                 float_shares=float_shares,
+                free_float_pct=free_float_pct,
+                outstanding_shares=outstanding_shares,
                 preferred_float=False,
                 last_price=price_info.price,
                 price_status=price_status,
@@ -263,30 +265,30 @@ class UniverseCurator:
 
     async def _get_float_data(
         self, ticker: str
-    ) -> Tuple[Optional[int], Optional[datetime], str, bool]:
+    ) -> Tuple[Optional[int], Optional[float], Optional[int], Optional[datetime], str, bool]:
         """
         Fetch float data with caching and budget guard.
 
         Returns:
-            float_shares, updated_at, float_status, within_float_flag
+            float_shares, free_float_pct, outstanding_shares, updated_at, float_status, within_float_flag
         """
         if not self.fmp_client:
-            return None, None, "FMP_DISABLED", True
+            return None, None, None, None, "FMP_DISABLED", True
 
         if ticker in self._float_cache:
-            shares, updated_at, status = self._float_cache[ticker]
-            return shares, updated_at, status, True
+            shares, free_float_pct, outstanding_shares, updated_at, status = self._float_cache[ticker]
+            return shares, free_float_pct, outstanding_shares, updated_at, status, True
 
-        shares, updated_at, status = await asyncio.to_thread(
+        shares, free_float_pct, outstanding_shares, updated_at, status = await asyncio.to_thread(
             self.fmp_client.get_float, ticker
         )
-        self._float_cache[ticker] = (shares, updated_at, status)
+        self._float_cache[ticker] = (shares, free_float_pct, outstanding_shares, updated_at, status)
 
         if shares is None:
             within_float = True  # don't drop ticker just because float is missing
-            return None, updated_at, status, within_float
+            return None, free_float_pct, outstanding_shares, updated_at, status, within_float
 
-        return shares, updated_at, "HAS_FLOAT", True
+        return shares, free_float_pct, outstanding_shares, updated_at, "HAS_FLOAT", True
 
     async def _prime_float_cache(self, tickers: list) -> None:
         """Fetch float data for provided tickers in a single batch call."""
