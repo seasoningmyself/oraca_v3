@@ -191,9 +191,14 @@ class UniverseCurator:
         buffer_min = price_min * (Decimal("1") - buffer_pct)
         buffer_max = price_max * (Decimal("1") + buffer_pct)
 
-        await self._prime_float_cache(list(tickers.keys()))
-
+        # Price/locale pre-filter to minimize FMP calls
+        price_eligible: Dict[str, Dict[str, Any]] = {}
         for ticker, meta in tickers.items():
+            locale = (meta.get("locale") or "").lower()
+            if locale not in ("us", "usa", "united states"):
+                summary["skipped_price"] += 1
+                continue
+
             price_info = price_map.get(ticker)
             if not price_info:
                 summary["skipped_price"] += 1
@@ -206,6 +211,24 @@ class UniverseCurator:
                 buffer_min,
                 buffer_max,
             )
+            if not within_price:
+                summary["skipped_price"] += 1
+                continue
+
+            price_eligible[ticker] = {
+                "meta": meta,
+                "price": price_info,
+                "price_status": price_status,
+                "within_price": within_price,
+            }
+
+        await self._prime_float_cache(list(price_eligible.keys()))
+
+        for ticker, payload in price_eligible.items():
+            meta = payload["meta"]
+            price_info = payload["price"]
+            price_status = payload["price_status"]
+            within_price = payload["within_price"]
             float_shares, free_float_pct, outstanding_shares, float_updated_at, float_status, within_float = await self._get_float_data(ticker)
 
             status, status_reason = self._determine_status(
@@ -277,7 +300,8 @@ class UniverseCurator:
 
         if ticker in self._float_cache:
             shares, free_float_pct, outstanding_shares, updated_at, status = self._float_cache[ticker]
-            return shares, free_float_pct, outstanding_shares, updated_at, status, True
+            within_float, float_status = self._evaluate_float(shares)
+            return shares, free_float_pct, outstanding_shares, updated_at, float_status, within_float
 
         shares, free_float_pct, outstanding_shares, updated_at, status = await asyncio.to_thread(
             self.fmp_client.get_float, ticker
@@ -288,7 +312,20 @@ class UniverseCurator:
             within_float = True  # don't drop ticker just because float is missing
             return None, free_float_pct, outstanding_shares, updated_at, status, within_float
 
-        return shares, free_float_pct, outstanding_shares, updated_at, "HAS_FLOAT", True
+        within_float, float_status = self._evaluate_float(shares)
+        return shares, free_float_pct, outstanding_shares, updated_at, float_status, within_float
+
+    def _evaluate_float(self, float_shares: Optional[int]) -> Tuple[bool, str]:
+        """Check float against configured thresholds and return status tag."""
+        if float_shares is None:
+            return True, "MISSING_FLOAT"
+        if float_shares > self.config.universe.float_max:
+            return False, "FLOAT_OVER_MAX"
+        ideal_min = self.config.universe.float_ideal_min
+        ideal_max = self.config.universe.float_ideal_max
+        if ideal_min and ideal_max and ideal_min <= float_shares <= ideal_max:
+            return True, "FLOAT_IDEAL"
+        return True, "HAS_FLOAT"
 
     async def _prime_float_cache(self, tickers: list) -> None:
         """Fetch float data for provided tickers in a single batch call."""
@@ -345,7 +382,10 @@ class UniverseCurator:
         float_status: str,
     ) -> Tuple[str, str]:
         if within_price and within_float:
-            return "ACTIVE", "meets_criteria"
+            reasons = []
+            if float_status == "FLOAT_IDEAL":
+                reasons.append("ideal_float")
+            return "ACTIVE", ",".join(reasons) or "meets_criteria"
 
         reasons = []
         if not within_price:

@@ -59,6 +59,9 @@ class UniverseConfig(BaseModel):
     price_min: float = 0.40
     price_max: float = 50.0
     price_buffer_pct: float = 0.15  # 15% tolerance before retirement
+    float_max: int = 55_000_000
+    float_ideal_min: int = 10_000_000
+    float_ideal_max: int = 33_000_000
     ticker_page_limit: int = 1000
     snapshot_page_limit: int = 250
 
