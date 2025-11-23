@@ -208,4 +208,23 @@ class CandleRepository(BaseRepository):
             SELECT COUNT(*) FROM candles
             WHERE symbol_id = $1 AND timeframe = $2
         """
-        return await self.fetchval(query, symbol_id, timeframe)
+        return await self.fetchval(query, symbol_id, timeframe) or 0
+
+    async def delete_older_than(self, symbol_id: int, timeframe: str, cutoff: datetime) -> int:
+        """
+        Delete candles older than the cutoff for a symbol/timeframe.
+
+        Args:
+            symbol_id: Symbol ID
+            timeframe: Timeframe
+            cutoff: Timestamp; rows older than this are removed
+
+        Returns:
+            Number of rows deleted
+        """
+        query = """
+            DELETE FROM candles
+            WHERE symbol_id = $1 AND timeframe = $2 AND ts < $3
+        """
+        result = await self.execute(query, symbol_id, timeframe, cutoff)
+        return int(result.split()[-1]) if isinstance(result, str) else 0
