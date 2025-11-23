@@ -4,7 +4,7 @@ Provides a clean interface for fetching market data.
 """
 from massive import RESTClient
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 import asyncio
 import time
@@ -159,7 +159,10 @@ class MassiveClient:
                 'ticker': ticker,
                 'price': Decimal(str(trade.price)),
                 'size': trade.size,
-                'timestamp': datetime.fromtimestamp(trade.sip_timestamp / 1000000000),
+                'timestamp': datetime.fromtimestamp(
+                    trade.sip_timestamp / 1_000_000_000,
+                    tz=timezone.utc
+                ),
                 'exchange': trade.exchange if hasattr(trade, 'exchange') else None
             }
 
