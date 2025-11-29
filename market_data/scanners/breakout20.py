@@ -14,11 +14,8 @@ import math
 
 from market_data.models.candle import Candle
 from market_data.repositories.candle_repository import CandleRepository
-from market_data.repositories.signal_repository import SignalRepository
-from market_data.repositories.symbol_repository import SymbolRepository
-from market_data.repositories.universe_repository import UniverseRepository
 from market_data.client import MassiveClient
-from market_data.scanners.scorer import breakout20_score
+from market_data.scanners.interfaces import Detector, Detection
 from market_data.utils.logger import get_logger
 
 
@@ -37,73 +34,46 @@ class SignalCandidate:
     score: float
 
 
-class Breakout20Scanner:
+class Breakout20Scanner(Detector):
     """Detect breakout20_v1 signals on a recent window of candles."""
 
     def __init__(
         self,
         *,
         candle_repo: CandleRepository,
-        signal_repo: SignalRepository,
-        symbol_repo: SymbolRepository,
-        universe_repo: UniverseRepository,
         massive_client: MassiveClient,
         history_limit: int = 400,
         mtf_windows: Optional[Dict[str, int]] = None,
     ):
         self.candles = candle_repo
-        self.signals = signal_repo
-        self.symbols = symbol_repo
-        self.universe = universe_repo
         self.history_limit = history_limit
         self.mtf_windows = mtf_windows or {"15m": 250, "1h": 200, "4h": 200}
         self.massive = massive_client
 
-    async def run_for_timeframe(self, timeframe: str, tickers: Optional[List[str]] = None) -> int:
+    async def detect(self, symbol_id: int, ticker: str, timeframe: str) -> Optional[Detection]:
         """
-        Scan a timeframe for the provided tickers (or ACTIVE universe) and store signals.
-
-        Returns:
-            Number of signals stored.
+        Load candles and return a Detection if conditions are met; otherwise None.
         """
-        if tickers is None:
-            universe_entries = await self.universe.list_by_status(["ACTIVE"])
-            tickers = [u.ticker for u in universe_entries]
-
-        stored = 0
-        for ticker in tickers:
-            symbol = await self.symbols.get_by_ticker(ticker)
-            if not symbol:
-                continue
-            candles = await self.candles.get_candles(symbol.id, timeframe, limit=self.history_limit)
-            if not candles:
-                continue
-            # get_candles returns DESC; compute in ascending
-            candles = list(reversed(candles))
-            candidate = await self._evaluate_symbol(symbol.id, ticker, timeframe, candles)
-            if not candidate:
-                continue
-            metadata = {
+        candles = await self.candles.get_candles(symbol_id, timeframe, limit=self.history_limit)
+        if not candles:
+            return None
+        candles = list(reversed(candles))  # ascending
+        candidate = await self._evaluate_symbol(symbol_id, ticker, timeframe, candles)
+        if not candidate:
+            return None
+        return Detection(
+            symbol_id=candidate.symbol_id,
+            ticker=candidate.ticker,
+            timeframe=candidate.timeframe,
+            fired_at=candidate.fired_at,
+            side="LONG",
+            entry_price=candidate.price,
+            features=candidate.features,
+            metadata={
+                "strategy": "breakout20_v1",
                 "session_flag": candidate.session_flag,
-                "score": candidate.score,
-            }
-            sig_id = await self.signals.upsert_signal(
-                symbol_id=candidate.symbol_id,
-                timeframe=timeframe,
-                fired_at=candidate.fired_at,
-                strategy="breakout20_v1",
-                direction="LONG",
-                entry_price=candidate.price,
-                confidence=None,
-                stop_loss=None,
-                take_profit=None,
-                features=candidate.features,
-                metadata=metadata,
-            )
-            if sig_id:
-                stored += 1
-        logger.info("Breakout20: stored %s signals for timeframe %s", stored, timeframe)
-        return stored
+            },
+        )
 
     async def _evaluate_symbol(
         self,
