@@ -17,6 +17,8 @@ from market_data.repositories.signal_repository import SignalRepository
 from market_data.repositories.symbol_repository import SymbolRepository
 from market_data.repositories.universe_repository import UniverseRepository
 from market_data.scanners.breakout20 import Breakout20Scanner
+from market_data.scanners.grail import GrailScanner
+from market_data.scanners.black_reign import BlackReignScanner
 from market_data.scanners.scorer import breakout20_score
 from market_data.scanners.interfaces import Scorer, Detection
 from market_data.services.scan_service import ScanService
@@ -68,6 +70,20 @@ async def main():
             history_limit=args.history_limit,
         )
         scorer = Breakout20Scorer()
+    elif args.detector == "grail":
+        detector = GrailScanner(
+            candle_repo=candle_repo,
+            massive_client=massive_client,
+            history_limit=args.history_limit,
+        )
+        scorer = Breakout20Scorer()  # reuse simple scoring until a custom one is defined
+    elif args.detector == "blackreign":
+        detector = BlackReignScanner(
+            candle_repo=candle_repo,
+            base_timeframe=args.timeframe,
+            history_limit=args.history_limit,
+        )
+        scorer = Breakout20Scorer()  # placeholder scorer
     else:
         raise ValueError(f"Unknown detector: {args.detector}")
 
