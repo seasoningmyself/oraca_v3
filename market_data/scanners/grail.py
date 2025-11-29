@@ -78,6 +78,8 @@ class GrailScanner(Detector):
         macd_hist = self._macd_hist(closes)
         rsi = self._rsi(closes, period=self.cfg.rsi_period)
         rel_vol_10 = self._rel_vol(vols, window=10)
+        rel_vol_20 = self._rel_vol(vols, window=20)
+        atrp = self._atrp(highs, lows=[float(c.low) for c in base], closes=closes, period=14)
 
         # Multi-timeframe trend
         trend_d = self._latest_trend(d_bars, 20)
@@ -119,11 +121,16 @@ class GrailScanner(Detector):
             "trend_m15": trend_m15,
             "bb_width": bb_width[idx],
             "macd_hist": macd_hist[idx],
+            "macd_hist_prev1": macd_hist[idx - 1] if idx - 1 >= 0 else None,
+            "macd_hist_prev2": macd_hist[idx - 2] if idx - 2 >= 0 else None,
             "rsi14": rsi_val,
             "rel_vol_10": rel_vol_10[idx],
+            "rel_vol_20": rel_vol_20[idx],
             "r1": r1,
             "r2": r2,
             "ret_pot": ret_pot,
+            "atrp": atrp[idx],
+            "bb_width_thresh": self.cfg.compression_threshold,
         }
         return Detection(
             symbol_id=symbol_id,
@@ -228,3 +235,22 @@ class GrailScanner(Detector):
         sma = self._sma(closes, window)
         idx = len(closes) - 1
         return sma[idx] is not None and closes[idx] > sma[idx]
+
+    def _atrp(self, highs: List[float], lows: List[float], closes: List[float], period: int) -> List[Optional[float]]:
+        trs: List[float] = []
+        for i in range(len(closes)):
+            if i == 0:
+                trs.append(highs[i] - lows[i])
+                continue
+            tr = max(
+                highs[i] - lows[i],
+                abs(highs[i] - closes[i - 1]),
+                abs(lows[i] - closes[i - 1]),
+            )
+            trs.append(tr)
+        atr = self._ema_wilder(trs, period)
+        atrp: List[Optional[float]] = [None] * len(closes)
+        for i in range(len(closes)):
+            if atr[i] and closes[i]:
+                atrp[i] = 100 * (atr[i] / closes[i])
+        return atrp

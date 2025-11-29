@@ -19,7 +19,11 @@ from market_data.repositories.universe_repository import UniverseRepository
 from market_data.scanners.breakout20 import Breakout20Scanner
 from market_data.scanners.grail import GrailScanner
 from market_data.scanners.black_reign import BlackReignScanner
-from market_data.scanners.scorer import breakout20_score
+from market_data.scanners.scorer import (
+    breakout20_score,
+    grail_score,
+    blackreign_score,
+)
 from market_data.scanners.interfaces import Scorer, Detection
 from market_data.services.scan_service import ScanService
 from market_data.utils.logger import get_logger
@@ -39,6 +43,46 @@ class Breakout20Scorer(Scorer):
             bb_pct=f.get("bb_pct"),
             atrp=f.get("atrp"),
             multitf=f.get("multitfconfirmation", 0),
+        )
+
+
+class GrailScorer(Scorer):
+    def score(self, detection: Detection) -> float:
+        f = detection.features
+        return grail_score(
+            close=f.get("price"),
+            r1=f.get("r1"),
+            bb_width=f.get("bb_width"),
+            bb_width_thresh=f.get("bb_width_thresh") or 0.05,
+            rel_vol_20=f.get("rel_vol_20"),
+            trend_bits=[
+                1 if f.get("trend_d") else 0,
+                1 if f.get("trend_h4") else 0,
+                1 if f.get("trend_h1") else 0,
+                1 if f.get("trend_m15") else 0,
+            ],
+            macd_hist=f.get("macd_hist"),
+            macd_hist_prev1=f.get("macd_hist_prev1"),
+            macd_hist_prev2=f.get("macd_hist_prev2"),
+            rsi=f.get("rsi14"),
+            atrp=f.get("atrp"),
+        )
+
+
+class BlackReignScorer(Scorer):
+    def score(self, detection: Detection) -> float:
+        f = detection.features
+        return blackreign_score(
+            trend_macro=bool(f.get("trend_macro")),
+            dist20=f.get("dist20") or 0,
+            dist50=f.get("dist50") or 0,
+            rel_vol_20=f.get("rel_vol_20"),
+            rsi=f.get("rsi14"),
+            macd_hist=f.get("macd_hist"),
+            macd_hist_prev=f.get("macd_hist_prev"),
+            reentry_flag=bool(f.get("reentry_flag")),
+            ma_reclaim_flag=bool(f.get("ma_reclaim_flag")),
+            atrp=f.get("atrp"),
         )
 
 

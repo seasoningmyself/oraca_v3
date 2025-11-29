@@ -65,6 +65,8 @@ class BlackReignScanner(Detector):
         rsi = self._rsi(closes, period=self.cfg.rsi_period)
         macd_hist = self._macd_hist(closes)
         rel_vol_10 = self._rel_vol(volumes, window=10)
+        rel_vol_20 = self._rel_vol(volumes, window=20)
+        atrp = self._atrp(highs=[float(c.high) for c in bars], lows=[float(c.low) for c in bars], closes=closes, period=14)
 
         trend = (
             sma20[idx] is not None and sma50[idx] is not None and sma200[idx] is not None
@@ -81,8 +83,8 @@ class BlackReignScanner(Detector):
         macd_reset = macd_hist[idx] is not None and macd_hist[idx - 1] is not None and macd_hist[idx] < macd_hist[idx - 1]
 
         volquiet = False
-        if rel_vol_10[idx] is not None:
-            volquiet = volumes[idx] <= self.cfg.quiet_vol_mult * rel_vol_10[idx] * (sum(volumes[idx-9:idx+1])/10 if idx>=9 else 1)
+        if rel_vol_20[idx] is not None:
+            volquiet = rel_vol_20[idx] <= self.cfg.quiet_vol_mult
 
         reversal = price > closes[idx - 1]
         ma_reclaim = (sma20[idx] is not None and price >= sma20[idx]) or (sma50[idx] is not None and price >= sma50[idx])
@@ -98,7 +100,13 @@ class BlackReignScanner(Detector):
             "dist50": dist50,
             "rsi14": rsi_val,
             "macd_hist": macd_hist[idx],
+            "macd_hist_prev": macd_hist[idx - 1] if idx - 1 >= 0 else None,
+            "rel_vol_20": rel_vol_20[idx],
             "rel_vol_10": rel_vol_10[idx],
+            "trend_macro": trend,
+            "reentry_flag": reversal,
+            "ma_reclaim_flag": ma_reclaim,
+            "atrp": atrp[idx],
         }
         return Detection(
             symbol_id=symbol_id,
@@ -177,3 +185,22 @@ class BlackReignScanner(Detector):
             if sma[i]:
                 out[i] = volumes[i] / sma[i] if sma[i] else None
         return out
+
+    def _atrp(self, highs: List[float], lows: List[float], closes: List[float], period: int) -> List[Optional[float]]:
+        trs: List[float] = []
+        for i in range(len(closes)):
+            if i == 0:
+                trs.append(highs[i] - lows[i])
+                continue
+            tr = max(
+                highs[i] - lows[i],
+                abs(highs[i] - closes[i - 1]),
+                abs(lows[i] - closes[i - 1]),
+            )
+            trs.append(tr)
+        atr = self._ema_wilder(trs, period)
+        atrp: List[Optional[float]] = [None] * len(closes)
+        for i in range(len(closes)):
+            if atr[i] and closes[i]:
+                atrp[i] = 100 * (atr[i] / closes[i])
+        return atrp
