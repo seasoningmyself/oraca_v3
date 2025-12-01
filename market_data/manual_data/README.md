@@ -1,0 +1,1 @@
+We are unable to get reliable data for float and outstanding share. So we have decided to manually get this data and update it every week. We are only storing the stock tickers for now. 
