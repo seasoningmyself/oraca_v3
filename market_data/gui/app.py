@@ -1,28 +1,18 @@
 """
-Simple Flask UI to list manual_watchlist tickers that pass price/volume filters.
+Simple Flask UI (synchronous) to list:
+  - Universe (manual_watchlist) tickers passing price/volume filters (uses latest 15m candle)
+  - Recent signals for Breakout20, Grail, Black Reign (last 24 hours) from the signals table
 
-Filters (defaults):
-    - price between 0.40 and 50
-    - daily volume >= 40,000
-
-It uses the latest 1d candle stored in the DB per ticker. Run:
-    PYTHONPATH=. flask --app market_data.gui.app run
-
-Pass query params to override filters, e.g.:
-    http://localhost:5000/?price_min=0.5&price_max=20&min_volume=100000
+Run:
+    PYTHONPATH=. flask --app market_data.gui.app run --host 0.0.0.0 --port 8001
 """
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime
-from typing import List, Tuple
-
+import psycopg2
+import psycopg2.extras
 from flask import Flask, request, render_template_string
 
 from market_data.config import get_config
-from market_data.repositories.base_repository import BaseRepository
-from market_data.repositories.candle_repository import CandleRepository
-from market_data.repositories.symbol_repository import SymbolRepository
 
 app = Flask(__name__)
 
@@ -49,10 +39,10 @@ PAGE_TEMPLATE = """
         <tr><th>Ticker</th><th>Close</th><th>Volume</th><th>Last Candle</th></tr>
         {% for row in universe_matches %}
         <tr>
-          <td>{{ row[0] }}</td>
-          <td>{{ "%.4f"|format(row[1]) }}</td>
-          <td>{{ row[2] }}</td>
-          <td>{{ row[3] }}</td>
+          <td>{{ row.ticker }}</td>
+          <td>{{ "%.4f"|format(row.close) }}</td>
+          <td>{{ row.volume }}</td>
+          <td>{{ row.ts }}</td>
         </tr>
         {% endfor %}
       </table>
@@ -113,43 +103,54 @@ PAGE_TEMPLATE = """
 """
 
 
-async def fetch_manual_tickers(repo: BaseRepository) -> List[str]:
-    rows = await repo.fetch("SELECT ticker FROM manual_watchlist ORDER BY ticker")
-    return [r["ticker"] for r in rows]
+def get_connection():
+    cfg = get_config()
+    dsn = cfg.db_dsn
+    return psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-async def latest_close_vol(candle_repo: CandleRepository, symbol_repo: SymbolRepository, ticker: str) -> Tuple[float | None, int | None, str | None]:
-    sym = await symbol_repo.get_or_create(ticker, None)
-    candle = await candle_repo.get_latest_candle(sym.id, "1d")
-    if not candle:
-        return None, None, None
-    ts_str = candle.ts.isoformat()
-    return float(candle.close), int(candle.volume or 0), ts_str
+def load_universe(price_min: float, price_max: float, min_volume: int):
+    """
+    Load tickers from manual_watchlist and join latest 1d candle.
+    """
+    sql = """
+    SELECT mw.ticker, c.close, c.volume, c.ts
+    FROM manual_watchlist mw
+    JOIN symbols s ON s.ticker = mw.ticker
+    JOIN LATERAL (
+        SELECT close, volume, ts
+        FROM candles
+        WHERE candles.symbol_id = s.id AND candles.timeframe = '1d'
+        ORDER BY ts DESC
+        LIMIT 1
+    ) c ON TRUE
+    WHERE c.close BETWEEN %s AND %s
+      AND c.volume >= %s
+    ORDER BY mw.ticker;
+    """
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, (price_min, price_max, min_volume))
+        rows = cur.fetchall()
+    return rows
 
 
-async def get_matches(price_min: float, price_max: float, min_volume: int):
-    config = get_config()
-    base_repo = BaseRepository(config)
-    candle_repo = CandleRepository(config)
-    symbol_repo = SymbolRepository(config)
-
-    tickers = await fetch_manual_tickers(base_repo)
-    matches = []
-    for t in tickers:
-        close, vol, ts = await latest_close_vol(candle_repo, symbol_repo, t)
-        if close is None or vol is None:
-            continue
-        if price_min <= close <= price_max and vol >= min_volume:
-            matches.append((t, close, vol, ts))
-
-    await BaseRepository.close_pool()
-    return matches
-
-
-# Placeholder hooks for scanner results (no DB integration yet)
-def get_scanner_hits(scanner: str):
-    # TODO: fetch from signals table when wired
-    return []
+def load_signals(strategy: str, since_hours: int = 24, limit: int = 200):
+    """
+    Load recent signals for a strategy from the signals table.
+    """
+    sql = """
+    SELECT s.id, s.symbol_id, sym.ticker, s.timeframe, s.fired_at,
+           s.direction, s.entry_price, s.features, s.metadata
+    FROM signals s
+    JOIN symbols sym ON sym.id = s.symbol_id
+    WHERE s.strategy = %s AND s.fired_at >= (NOW() - INTERVAL '%s hours')
+    ORDER BY s.fired_at DESC
+    LIMIT %s;
+    """
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute(sql, (strategy, since_hours, limit))
+        rows = cur.fetchall()
+    return rows
 
 
 @app.route("/")
@@ -158,13 +159,14 @@ def index():
     price_max = float(request.args.get("price_max", 50.0))
     min_volume = int(request.args.get("min_volume", 40000))
 
-    matches = asyncio.run(get_matches(price_min, price_max, min_volume))
-    breakout_hits = get_scanner_hits("breakout20")
-    grail_hits = get_scanner_hits("grail")
-    blackreign_hits = get_scanner_hits("blackreign")
+    universe_matches = load_universe(price_min, price_max, min_volume)
+    breakout_hits = load_signals("breakout20_v1")
+    grail_hits = load_signals("grail_v1")
+    blackreign_hits = load_signals("blackreign_v1")
+
     return render_template_string(
         PAGE_TEMPLATE,
-        universe_matches=matches,
+        universe_matches=universe_matches,
         breakout_hits=breakout_hits,
         grail_hits=grail_hits,
         blackreign_hits=blackreign_hits,

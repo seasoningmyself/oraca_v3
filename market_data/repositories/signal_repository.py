@@ -1,7 +1,7 @@
 """
 Signal repository - insert and fetch signals.
 """
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 from datetime import datetime
 import json
 
@@ -64,3 +64,34 @@ class SignalRepository(BaseRepository):
             json.dumps(metadata or {}),
         )
         return row["id"] if row else None
+
+    async def list_recent(
+        self,
+        strategy: str,
+        since: datetime,
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        query = """
+        SELECT
+            s.id,
+            s.symbol_id,
+            sym.ticker,
+            s.timeframe,
+            s.fired_at,
+            s.direction,
+            s.entry_price,
+            s.features,
+            s.metadata
+        FROM signals s
+        JOIN symbols sym ON sym.id = s.symbol_id
+        WHERE s.strategy = $1 AND s.fired_at >= $2
+        ORDER BY s.fired_at DESC
+        LIMIT $3
+        """
+        rows = await self.fetch(query, strategy, since, limit)
+        results = []
+        for row in rows:
+            data = dict(row)
+            # features/metadata come back as JSON
+            results.append(data)
+        return results

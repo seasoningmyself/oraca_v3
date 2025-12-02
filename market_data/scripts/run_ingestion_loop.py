@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument("--timeframes", nargs="+", default=["15m"], help="Timeframes to ingest (default: 15m)")
     parser.add_argument("--recency-minutes", type=int, default=120, help="If latest bar older than this, backfill (default: 120)")
     parser.add_argument("--retention-days", type=int, default=2, help="Retention window for pruning (default: 2 days)")
-    parser.add_argument("--interval-seconds", type=int, default=60, help="Loop interval seconds (default: 60)")
+    parser.add_argument("--interval-seconds", type=int, default=900, help="Loop interval seconds (default: 900 = 15m)")
     parser.add_argument("--tickers", nargs="+", help="Optional explicit tickers (default: ACTIVE universe)")
     parser.add_argument("--once", action="store_true", help="Run a single ingestion + scan and exit")
     parser.add_argument("--prune", action="store_true", help="Prune after ingestion (defaults to False)")

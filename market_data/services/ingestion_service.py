@@ -11,6 +11,7 @@ from market_data.client import MassiveClient
 from market_data.config import get_config
 from market_data.repositories.base_repository import BaseRepository
 from market_data.repositories.candle_repository import CandleRepository
+from market_data.repositories.signal_repository import SignalRepository
 from market_data.repositories.symbol_repository import SymbolRepository
 from market_data.repositories.universe_repository import UniverseRepository
 from market_data.services.data_service import DataService
@@ -95,6 +96,7 @@ class IngestionService:
     ):
         self.config = get_config()
         self.timeframes = timeframes
+        self.daily_timeframe = "1d"
         self.recency_minutes = recency_minutes
         self.retention_days = retention_days
         self.tickers_override = tickers
@@ -118,8 +120,10 @@ class IngestionService:
     async def get_tickers(self) -> List[str]:
         if self.tickers_override:
             return self.tickers_override
-        entries = await self.universe_repo.list_by_status(["ACTIVE"])
-        return [u.ticker for u in entries]
+        # Default to manual_watchlist tickers
+        query = "SELECT ticker FROM manual_watchlist ORDER BY ticker"
+        rows = await BaseRepository(self.config).fetch(query)
+        return [r["ticker"] for r in rows]
 
     async def refresh_once(self):
         tickers = await self.get_tickers()
@@ -128,11 +132,28 @@ class IngestionService:
 
         total_candles = 0
         for t in tickers:
+            sym = await self.symbol_repo.get_or_create(t, None)
+            # Always ensure latest daily bar
+            latest_1d = await self.candle_repo.get_latest_candle(sym.id, self.daily_timeframe)
+            needs_daily = latest_1d is None or latest_1d.ts.date() < now_utc.date()
+            if needs_daily:
+                to_date = now_utc.date()
+                from_date = (to_date - timedelta(days=1)).isoformat()
+                to_date_str = to_date.isoformat()
+                try:
+                    count = await self.data_service.fetch_and_store_candles(
+                        ticker=t,
+                        timeframe=self.daily_timeframe,
+                        from_date=from_date,
+                        to_date=to_date_str,
+                    )
+                    total_candles += count
+                except Exception as exc:
+                    logger.warning("Daily backfill error for %s: %s", t, exc)
+
             for tf in self.timeframes:
-                latest = await self.candle_repo.get_latest_candle_for_symbol(t, tf) if hasattr(self.candle_repo, "get_latest_candle_for_symbol") else None
-                needs_backfill = True
-                if latest and latest.ts >= recency_cutoff:
-                    needs_backfill = False
+                latest = await self.candle_repo.get_latest_candle(sym.id, tf)
+                needs_backfill = latest is None or latest.ts < recency_cutoff
                 if needs_backfill:
                     to_date = now_utc.date()
                     from_date = (to_date - timedelta(days=1)).isoformat()
@@ -188,7 +209,7 @@ class IngestionService:
             sym = await self.symbol_repo.get_by_ticker(t)
             if not sym:
                 continue
-            for tf in self.timeframes:
+            for tf in self.timeframes + [self.daily_timeframe]:
                 try:
                     deleted += await self.candle_repo.delete_older_than(sym.id, tf, cutoff)
                 except Exception as exc:
