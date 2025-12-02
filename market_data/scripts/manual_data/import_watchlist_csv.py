@@ -1,16 +1,19 @@
 """
-Import tickers from a text file (first column per line) into a manual watchlist table.
+Import tickers from a CSV file into manual_watchlist.
 
 Assumptions:
-- Input file has one row per stock, fields separated by whitespace or tabs.
-- Ticker is the first token on each line.
+ - CSV file, ticker is the first column on each row.
+ - Optional truncate to replace the table contents.
 
 Usage:
-    python -m market_data.scripts.manual_data.import_tickers --file dec-1-stocks.txt
+  PYTHONPATH=. python3 -m market_data.scripts.manual_data.import_watchlist_csv \
+    --file market_data/manual_data/2025-12-02-WatchListScanner.csv --truncate
 """
 from __future__ import annotations
 
 import argparse
+import asyncio
+import csv
 from market_data.config import get_config
 from market_data.repositories.base_repository import BaseRepository
 from market_data.utils.logger import get_logger
@@ -20,9 +23,10 @@ logger = get_logger(__name__)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Import tickers from a text file into manual_watchlist.")
-    parser.add_argument("--file", required=True, help="Path to the text file with tickers (ticker is first token per line).")
+    parser = argparse.ArgumentParser(description="Import tickers from CSV into manual_watchlist.")
+    parser.add_argument("--file", required=True, help="Path to CSV file (ticker in first column).")
     parser.add_argument("--as-of", help="Optional as_of date label (e.g., 2024-12-01). Defaults to today.")
+    parser.add_argument("--truncate", action="store_true", help="Truncate manual_watchlist before import.")
     return parser.parse_args()
 
 
@@ -35,6 +39,10 @@ async def ensure_table(repo: BaseRepository):
     );
     """
     await repo.execute(query)
+
+
+async def truncate_table(repo: BaseRepository):
+    await repo.execute("TRUNCATE TABLE manual_watchlist;")
 
 
 async def upsert_tickers(repo: BaseRepository, tickers, as_of: str | None):
@@ -54,14 +62,12 @@ async def upsert_tickers(repo: BaseRepository, tickers, as_of: str | None):
 
 def extract_tickers(path: str):
     tickers = []
-    with open(path, "r") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
+    with open(path, newline="") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if not row or not row[0].strip():
                 continue
-            parts = line.split()
-            ticker = parts[0].upper()
-            tickers.append(ticker)
+            tickers.append(row[0].strip().upper())
     return tickers
 
 
@@ -71,6 +77,9 @@ async def main():
     repo = BaseRepository(config)
 
     await ensure_table(repo)
+
+    if args.truncate:
+        await truncate_table(repo)
 
     tickers = extract_tickers(args.file)
     if not tickers:
@@ -83,5 +92,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
