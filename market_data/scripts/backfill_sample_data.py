@@ -40,6 +40,11 @@ def parse_args():
         nargs="+",
         help="Timeframes to backfill (default: config.timeframes)",
     )
+    parser.add_argument(
+        "--tickers",
+        nargs="+",
+        help="Explicit tickers to backfill (bypass Massive list).",
+    )
     return parser.parse_args()
 
 
@@ -66,10 +71,10 @@ def pick_tickers(rest_client: RESTClient, limit: int) -> List[str]:
     return tickers
 
 
-async def backfill(limit: int, days: int, timeframes: List[str]):
+async def backfill(limit: int, days: int, timeframes: List[str], tickers_override: List[str] | None = None):
     config = get_config()
     rest_client = RESTClient(api_key=config.massive_api_key, base=config.massive.base_url.rstrip("/"))
-    tickers = pick_tickers(rest_client, limit)
+    tickers = tickers_override or pick_tickers(rest_client, limit)
     if not tickers:
         logger.error("No tickers fetched; aborting backfill.")
         return
@@ -111,7 +116,7 @@ def main():
     args = parse_args()
     config = get_config()
     timeframes = args.timeframes or config.timeframes
-    asyncio.run(backfill(limit=args.limit, days=args.days, timeframes=timeframes))
+    asyncio.run(backfill(limit=args.limit, days=args.days, timeframes=timeframes, tickers_override=args.tickers))
 
 
 if __name__ == "__main__":
